@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HamroAI Vercel Wrapper</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="card">
+        <p class="tag">HamroAI</p>
+        <h1>HamroAI Web Wrapper</h1>
+        <p>Generate responses from your Hugging Face Space through a Vercel API route.</p>
+      </header>
+
+      <section class="card">
+        <label for="prompt">Prompt</label>
+        <textarea id="prompt" rows="6" placeholder="Ask in Nepali or English...">नेपालको राजधानी के हो?</textarea>
+
+        <div class="controls">
+          <div class="slider-wrap">
+            <label for="max_new_tokens">max_new_tokens</label>
+            <input id="max_new_tokens" type="range" min="8" max="256" value="80" step="1" />
+            <span id="token_value">80</span>
+          </div>
+          <button id="generate_btn" type="button">Generate</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="output-head">
+          <h2>Output</h2>
+          <span id="status" class="status idle">Idle</span>
+        </div>
+        <pre id="output">Result will appear here.</pre>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
