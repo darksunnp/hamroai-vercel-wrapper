@@ -1,5 +1,21 @@
 const DEFAULT_MODEL_ID = "Helsinki-NLP/opus-mt-ne-en";
-const DEFAULT_ENDPOINT = `https://api-inference.huggingface.co/models/${DEFAULT_MODEL_ID}`;
+const DEFAULT_ENDPOINT = `https://router.huggingface.co/hf-inference/models/${DEFAULT_MODEL_ID}`;
+
+function normalizeEndpoint(rawEndpoint) {
+  if (!rawEndpoint) {
+    return DEFAULT_ENDPOINT;
+  }
+
+  return rawEndpoint
+    .replace(
+      /^https:\/\/api-inference\.huggingface\.co\/models\//i,
+      "https://router.huggingface.co/hf-inference/models/"
+    )
+    .replace(
+      /^https:\/\/router\.huggingface\.co\/models\//i,
+      "https://router.huggingface.co/hf-inference/models/"
+    );
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -51,7 +67,9 @@ export default async function handler(req, res) {
     return jsonResponse(res, 400, { error: "Prompt is required" });
   }
 
-  const endpoint = process.env.HAMROAI_TRANSLATION_ENDPOINT || DEFAULT_ENDPOINT;
+  const endpoint = normalizeEndpoint(
+    process.env.HAMROAI_TRANSLATION_ENDPOINT || DEFAULT_ENDPOINT
+  );
   const hfToken = process.env.HF_INFERENCE_TOKEN || process.env.HF_TOKEN;
   const headers = {
     "Content-Type": "application/json",
