@@ -1,5 +1,4 @@
 # HamroAI Vercel Wrapper
-
 Static frontend + Vercel serverless API wrapper for the public Hugging Face Space.
 
 ## Deploy on Vercel
@@ -11,8 +10,8 @@ Static frontend + Vercel serverless API wrapper for the public Hugging Face Spac
 
 Optional environment variables in Vercel project settings:
 
-- `HAMROAI_SPACE_BASE_URL` (default: `https://darksunnp-hamroai.hf.space`)
-- `HAMROAI_API_NAME` (default: `/generate`)
+- `HAMROAI_TRANSLATION_ENDPOINT` (default: `https://api-inference.huggingface.co/models/Helsinki-NLP/opus-mt-ne-en`)
+- `HF_INFERENCE_TOKEN` (optional but recommended for stable throughput)
 
 ## Local preview
 

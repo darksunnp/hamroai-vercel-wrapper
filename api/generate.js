@@ -1,58 +1,27 @@
-const DEFAULT_SPACE_BASE_URL = "https://darksunnp-hamroai.hf.space";
-const DEFAULT_API_NAME = "/generate";
-
-function normalizeApiName(name) {
-  if (!name) return DEFAULT_API_NAME;
-  return String(name).startsWith("/") ? String(name) : DEFAULT_API_NAME;
-}
+const DEFAULT_MODEL_ID = "Helsinki-NLP/opus-mt-ne-en";
+const DEFAULT_ENDPOINT = `https://api-inference.huggingface.co/models/${DEFAULT_MODEL_ID}`;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function extractOutput(payload) {
-  if (payload == null) return null;
+function extractTranslation(payload) {
+  if (!payload) return null;
 
   if (typeof payload === "string") return payload;
 
-  if (Array.isArray(payload)) {
-    return payload.length ? String(payload[0]) : null;
+  if (Array.isArray(payload) && payload.length) {
+    const first = payload[0];
+    if (typeof first === "string") return first;
+    if (first && typeof first.translation_text === "string") return first.translation_text;
+    if (first && typeof first.generated_text === "string") return first.generated_text;
+    if (first && typeof first.text === "string") return first.text;
   }
 
   if (typeof payload === "object") {
-    if (typeof payload.output === "string") return payload.output;
-
-    if (payload.output && Array.isArray(payload.output.data) && payload.output.data.length) {
-      return String(payload.output.data[0]);
-    }
-
-    if (Array.isArray(payload.data) && payload.data.length) {
-      return String(payload.data[0]);
-    }
-  }
-
-  return null;
-}
-
-function parseSseForOutput(sseText) {
-  const dataLines = [];
-  for (const line of sseText.split(/\r?\n/)) {
-    if (line.startsWith("data:")) {
-      dataLines.push(line.slice(5).trim());
-    }
-  }
-
-  for (let i = dataLines.length - 1; i >= 0; i -= 1) {
-    const chunk = dataLines[i];
-    if (!chunk || chunk === "[DONE]") continue;
-
-    try {
-      const parsed = JSON.parse(chunk);
-      const output = extractOutput(parsed);
-      if (output) return output;
-    } catch {
-      // Ignore malformed chunk and continue.
-    }
+    if (typeof payload.translation_text === "string") return payload.translation_text;
+    if (typeof payload.generated_text === "string") return payload.generated_text;
+    if (typeof payload.text === "string") return payload.text;
   }
 
   return null;
@@ -77,91 +46,76 @@ export default async function handler(req, res) {
   }
 
   const prompt = String((payload && payload.prompt) || "").trim();
-  const maxNewTokensRaw = payload && payload.max_new_tokens;
 
   if (!prompt) {
     return jsonResponse(res, 400, { error: "Prompt is required" });
   }
 
-  let maxNewTokens = Number(maxNewTokensRaw || 80);
-  if (!Number.isFinite(maxNewTokens)) maxNewTokens = 80;
-  maxNewTokens = Math.max(8, Math.min(256, Math.floor(maxNewTokens)));
-
-  const spaceBaseUrl = process.env.HAMROAI_SPACE_BASE_URL || DEFAULT_SPACE_BASE_URL;
-  const apiName = normalizeApiName(process.env.HAMROAI_API_NAME || DEFAULT_API_NAME);
-  const callUrl = `${spaceBaseUrl}/gradio_api/call${apiName}`;
+  const endpoint = process.env.HAMROAI_TRANSLATION_ENDPOINT || DEFAULT_ENDPOINT;
+  const hfToken = process.env.HF_INFERENCE_TOKEN || process.env.HF_TOKEN;
+  const headers = {
+    "Content-Type": "application/json",
+  };
+  if (hfToken) {
+    headers.Authorization = `Bearer ${hfToken}`;
+  }
 
   try {
-    const startResp = await fetch(callUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data: [prompt, maxNewTokens] }),
-    });
-
-    const startText = await startResp.text();
-    if (!startResp.ok) {
-      return jsonResponse(res, startResp.status, {
-        error: `Queue start failed (${startResp.status})`,
-        details: startText.slice(0, 500),
-      });
-    }
-
-    let startPayload = {};
-    try {
-      startPayload = startText ? JSON.parse(startText) : {};
-    } catch {
-      return jsonResponse(res, 502, {
-        error: "Failed to parse queue start response",
-        details: startText.slice(0, 500),
-      });
-    }
-
-    const directOutput = extractOutput(startPayload);
-    if (directOutput) {
-      return jsonResponse(res, 200, { output: directOutput });
-    }
-
-    const eventId = startPayload.event_id;
-    if (!eventId) {
-      return jsonResponse(res, 502, {
-        error: "Queue start response missing event_id",
-        details: JSON.stringify(startPayload).slice(0, 500),
-      });
-    }
-
-    const resultUrl = `${callUrl}/${eventId}`;
-    const startedAt = Date.now();
-
-    while (Date.now() - startedAt < 210000) {
-      const resultResp = await fetch(resultUrl, {
-        method: "GET",
-        headers: {
-          Accept: "text/event-stream",
-          "Cache-Control": "no-cache",
-        },
+    let lastDetails = "";
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      const resp = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ inputs: prompt }),
       });
 
-      const resultText = await resultResp.text();
-      if (!resultResp.ok) {
-        await sleep(1200);
+      const respText = await resp.text();
+      let parsed = null;
+      try {
+        parsed = respText ? JSON.parse(respText) : null;
+      } catch {
+        parsed = null;
+      }
+
+      if (resp.status === 503) {
+        const waitSeconds = parsed && Number.isFinite(parsed.estimated_time)
+          ? Math.max(1, Math.ceil(parsed.estimated_time))
+          : 2;
+        lastDetails = `Model loading (attempt ${attempt}/4). Waiting ${waitSeconds}s.`;
+        await sleep(waitSeconds * 1000);
         continue;
       }
 
-      const output = parseSseForOutput(resultText);
-      if (output) {
-        return jsonResponse(res, 200, { output });
+      if (!resp.ok) {
+        const hint = resp.status === 401 || resp.status === 403
+          ? "Set HF_INFERENCE_TOKEN in Vercel Environment Variables."
+          : undefined;
+        return jsonResponse(res, resp.status, {
+          error: `Translation request failed (${resp.status})`,
+          hint,
+          details: (respText || "").slice(0, 500),
+        });
       }
 
-      await sleep(1200);
+      const output = extractTranslation(parsed);
+      if (!output) {
+        return jsonResponse(res, 502, {
+          error: "Could not parse translation output",
+          details: (respText || "").slice(0, 500),
+        });
+      }
+
+      return jsonResponse(res, 200, { output });
     }
 
     return jsonResponse(res, 504, {
-      error: "Timed out waiting for generation result",
-      hint: "The Space may be cold-starting or overloaded. Please retry.",
+      error: "Timed out while waiting for translation model",
+      hint: "Model is still loading. Retry in a few seconds.",
+      details: lastDetails,
     });
   } catch (error) {
     return jsonResponse(res, 500, {
-      error: `Unhandled server error: ${error.message || error}`,
+      error: `Unhandled server error: ${error.message || String(error)}`,
     });
   }
 }
