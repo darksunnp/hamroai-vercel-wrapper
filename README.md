@@ -1,5 +1,5 @@
 # HamroAI Vercel Wrapper
-Static frontend + Vercel serverless API wrapper for the public Hugging Face Space.
+Static frontend + Vercel serverless API for a Nepali chatbot.
 
 ## Deploy on Vercel
 
@@ -10,8 +10,9 @@ Static frontend + Vercel serverless API wrapper for the public Hugging Face Spac
 
 Optional environment variables in Vercel project settings:
 
-- `HAMROAI_TRANSLATION_ENDPOINT` (default: `https://router.huggingface.co/hf-inference/models/Helsinki-NLP/opus-mt-ne-en`)
-- `HF_INFERENCE_TOKEN` (optional but recommended for stable throughput)
+- `HF_INFERENCE_TOKEN` (required)
+- `HAMROAI_CHAT_MODEL` (default: `Qwen/Qwen2.5-7B-Instruct:fastest`)
+- `HAMROAI_SYSTEM_PROMPT` (optional custom system instruction)
 
 ## Local preview
 
